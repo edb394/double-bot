@@ -5,6 +5,7 @@ import datetime
 import pytz
 from gtts import gTTS
 import os
+import re
 
 # ------------ CONFIG ------------
 BOT_TOKEN = os.environ["BOT_TOKEN"]
@@ -27,6 +28,10 @@ schedule = {}
 def speak_text(text):
     tts = gTTS(text)
     tts.save("output.mp3")
+
+# Utility to normalize voice channel names
+def normalize(text):
+    return re.sub(r"\s+", " ", text.strip().lower())
 
 # ------------ EVENTS ------------
 @bot.event
@@ -66,15 +71,15 @@ async def schedule(ctx, day: str, time: str):
         await ctx.send("You're not in a voice channel. Please type the name of the one I should join.")
 
         def check(m):
-            return (
-                m.author.id == ctx.author.id
-                and m.channel.id == ctx.channel.id
-                and m.content.strip().lower() in [vc.name.lower() for vc in ctx.guild.voice_channels]
-            )
+            return m.author.id == ctx.author.id and m.channel.id == ctx.channel.id
 
         try:
             reply = await bot.wait_for("message", timeout=30.0, check=check)
-            voice_channel = discord.utils.get(ctx.guild.voice_channels, name=reply.content.strip())
+            user_input = normalize(reply.content)
+            voice_channel = next(
+                (vc for vc in ctx.guild.voice_channels if normalize(vc.name) == user_input),
+                None
+            )
             if not voice_channel:
                 await ctx.send("❌ Could not find that voice channel.")
                 return
@@ -113,10 +118,7 @@ async def end(ctx):
 
 @bot.command()
 async def debug(ctx):
-    if not schedule:
-        await ctx.send("📭 Schedule is empty.")
-    else:
-        await ctx.send(f"🛠 Internal schedule state: `{schedule}`")
+    await ctx.send(f"🛠 Internal schedule state: `{schedule}`")
 
 # ------------ TASK LOOP ------------
 @tasks.loop(minutes=1)
