@@ -22,7 +22,7 @@ intents.members = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 # In-memory schedule: {day: [(hour, minute, voice_channel_id)]}
-schedule = {}
+session_schedule = {}
 
 # TTS engine
 def speak_text(text):
@@ -90,17 +90,16 @@ async def schedule(ctx, day: str, time: str):
             await ctx.send("❌ Timed out waiting for channel name.")
             return
 
-
-    schedule.setdefault(day, []).append((hour, minute, voice_channel.id))
+    session_schedule.setdefault(day, []).append((hour, minute, voice_channel.id))
     await ctx.send(f"✅ Scheduled for {day} at {hour:02d}:{minute:02d} in {voice_channel.name}.")
 
 @bot.command()
 async def show_schedule(ctx):
-    if not schedule:
+    if not session_schedule:
         await ctx.send("📭 No sessions scheduled.")
         return
     msg = "🗓️ Scheduled Sessions:\n"
-    for day, entries in schedule.items():
+    for day, entries in session_schedule.items():
         for hour, minute, vc_id in entries:
             channel = discord.utils.get(ctx.guild.voice_channels, id=vc_id)
             channel_name = channel.name if channel else "Unknown Channel"
@@ -109,7 +108,7 @@ async def show_schedule(ctx):
 
 @bot.command()
 async def clear_schedule(ctx):
-    schedule.clear()
+    session_schedule.clear()
     await ctx.send("🧹 Cleared all scheduled sessions.")
 
 @bot.command()
@@ -122,16 +121,16 @@ async def end(ctx):
 
 @bot.command()
 async def debug(ctx):
-    await ctx.send(f"🛠 Internal schedule state: `{schedule}`")
+    await ctx.send(f"🛠 Internal schedule state: `{session_schedule}`")
 
 # ------------ TASK LOOP ------------
 @tasks.loop(minutes=1)
 async def session_checker():
     now = datetime.datetime.now(TIMEZONE)
     current_day = now.strftime("%a")
-    if current_day not in schedule:
+    if current_day not in session_schedule:
         return
-    for hour, minute, vc_id in schedule[current_day]:
+    for hour, minute, vc_id in session_schedule[current_day]:
         if now.hour == hour and now.minute == minute:
             for guild in bot.guilds:
                 voice_channel = discord.utils.get(guild.voice_channels, id=vc_id)
