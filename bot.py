@@ -96,7 +96,7 @@ async def schedule(ctx, day: str, time: str):
 @bot.command()
 async def show_schedule(ctx):
     if not session_schedule:
-        await ctx.send("📭 No sessions scheduled.")
+        await ctx.send("📬 No sessions scheduled.")
         return
     msg = "🗓️ Scheduled Sessions:\n"
     for day, entries in session_schedule.items():
@@ -128,14 +128,17 @@ async def debug(ctx):
 async def session_checker():
     now = datetime.datetime.now(TIMEZONE)
     current_day = now.strftime("%a")
+    print(f"[CHECKER] Now: {now.strftime('%a %H:%M')} | Looking for sessions...")
     if current_day not in session_schedule:
         return
     for hour, minute, vc_id in session_schedule[current_day]:
         if now.hour == hour and now.minute == minute:
+            print(f"[CHECKER] Found match for {current_day} at {hour:02d}:{minute:02d} in VC ID {vc_id}")
             for guild in bot.guilds:
                 voice_channel = discord.utils.get(guild.voice_channels, id=vc_id)
                 if voice_channel:
                     try:
+                        print(f"[VOICE] Attempting to join {voice_channel.name}")
                         vc = await voice_channel.connect()
                         speak_text("Hi Evan, let’s get started. What’s your first priority today?")
                         if os.path.exists("output.mp3"):
