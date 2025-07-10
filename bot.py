@@ -6,6 +6,7 @@ import pytz
 from gtts import gTTS
 import os
 import re
+import time
 
 # ------------ CONFIG ------------
 BOT_TOKEN = os.environ["BOT_TOKEN"]
@@ -24,10 +25,17 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 # In-memory schedule: {day: [(hour, minute, voice_channel_id)]}
 session_schedule = {}
 
-# TTS engine
+# TTS engine with logging and error handling
 def speak_text(text):
-    tts = gTTS(text)
-    tts.save("output.mp3")
+    try:
+        print("[TTS] Generating audio...")
+        start = time.time()
+        tts = gTTS(text)
+        tts.save("output.mp3")
+        duration = time.time() - start
+        print(f"[TTS] Audio saved as output.mp3 in {duration:.2f} seconds")
+    except Exception as e:
+        print(f"[ERROR] Failed to generate TTS audio: {e}")
 
 # Utility to normalize voice channel names
 def normalize(text):
@@ -146,6 +154,8 @@ async def session_checker():
                         speak_text("Hi Evan, let’s get started. What’s your first priority today?")
                         if os.path.exists("output.mp3"):
                             vc.play(discord.FFmpegPCMAudio("output.mp3"))
+                        else:
+                            print("[ERROR] output.mp3 does not exist, skipping playback")
                         await asyncio.sleep(30)
                         await vc.disconnect()
                     except Exception as e:
