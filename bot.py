@@ -76,6 +76,9 @@ async def schedule(ctx, day: str, time: str):
         try:
             reply = await bot.wait_for("message", timeout=30.0, check=check)
             user_input = normalize(reply.content)
+            print(f"[DEBUG] User input normalized: '{user_input}'")
+            all_channels = [normalize(vc.name) for vc in ctx.guild.voice_channels]
+            print(f"[DEBUG] Server channels: {all_channels}")
             voice_channel = next(
                 (vc for vc in ctx.guild.voice_channels if normalize(vc.name) == user_input),
                 None
@@ -86,6 +89,7 @@ async def schedule(ctx, day: str, time: str):
         except asyncio.TimeoutError:
             await ctx.send("❌ Timed out waiting for channel name.")
             return
+
 
     schedule.setdefault(day, []).append((hour, minute, voice_channel.id))
     await ctx.send(f"✅ Scheduled for {day} at {hour:02d}:{minute:02d} in {voice_channel.name}.")
