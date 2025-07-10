@@ -131,7 +131,10 @@ async def session_checker():
     print(f"[CHECKER] Now: {now.strftime('%a %H:%M')} | Looking for sessions...")
     if current_day not in session_schedule:
         return
-    for hour, minute, vc_id in session_schedule[current_day]:
+
+    new_schedule = []
+    for entry in session_schedule[current_day]:
+        hour, minute, vc_id = entry
         if now.hour == hour and now.minute == minute:
             print(f"[CHECKER] Found match for {current_day} at {hour:02d}:{minute:02d} in VC ID {vc_id}")
             for guild in bot.guilds:
@@ -147,5 +150,12 @@ async def session_checker():
                         await vc.disconnect()
                     except Exception as e:
                         print(f"[ERROR] Failed to join/play in {voice_channel.name}: {e}")
+        else:
+            new_schedule.append(entry)
+
+    if new_schedule:
+        session_schedule[current_day] = new_schedule
+    else:
+        del session_schedule[current_day]
 
 bot.run(BOT_TOKEN)
