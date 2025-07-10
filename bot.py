@@ -3,7 +3,7 @@ from discord.ext import commands, tasks
 import asyncio
 import datetime
 import pytz
-import pyttsx3
+from gtts import gTTS
 import os
 
 # ------------ CONFIG ------------
@@ -24,10 +24,9 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 schedule = {}
 
 # TTS engine
-tts_engine = pyttsx3.init()
 def speak_text(text):
-    tts_engine.save_to_file(text, "output.mp3")
-    tts_engine.runAndWait()
+    tts = gTTS(text)
+    tts.save("output.mp3")
 
 # ------------ EVENTS ------------
 @bot.event
