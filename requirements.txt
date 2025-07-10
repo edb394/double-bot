@@ -1,4 +1,4 @@
-discord.py
-gtts
-pytz
+py-cord
 PyNaCl
+gTTS
+pytz
