@@ -7,7 +7,7 @@ from gtts import gTTS
 import os
 
 # ------------ CONFIG ------------
-BOT_TOKEN = "YOUR_BOT_TOKEN_HERE"
+BOT_TOKEN = os.environ["BOT_TOKEN"]
 TIMEZONE = pytz.timezone("US/Central")
 
 # ------------ BOT SETUP ------------
