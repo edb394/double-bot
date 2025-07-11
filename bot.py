@@ -57,21 +57,17 @@ def speak_text(text):
     time.sleep(1)
     print("[TTS] Saved to output.mp3")
 
-def parse_day_time(day_str, time_str):
+def parse_day_time(day_str, time_str=None):
     now = datetime.datetime.now(TIMEZONE)
-    day_str = day_str.strip().capitalize()
-
-    # Handle input with only time (no day)
-    if not re.match(r'^(Mon|Tue|Wed|Thu|Fri|Sat|Sun)$', day_str):
-        time_str = day_str  # First argument was actually time
+    if time_str is None:
+        time_str = day_str
         base_time = now.replace(second=0, microsecond=0)
         match = re.match(r'^(\d{1,2})(?::(\d{2}))?\s*(a|am|p|pm)?$', time_str.strip(), re.IGNORECASE)
         if not match:
-            return None, None
+            return None, None, None
         hour = int(match.group(1))
         minute = int(match.group(2)) if match.group(2) else 0
         suffix = match.group(3)
-
         if suffix:
             if suffix.lower().startswith('p') and hour != 12:
                 hour += 12
@@ -80,23 +76,20 @@ def parse_day_time(day_str, time_str):
         else:
             if now.hour >= 12 and hour < 12:
                 hour += 12
-
         return now.strftime("%a"), hour, minute
 
-    # If both day and time are supplied
+    day_str = day_str.strip().capitalize()
     match = re.match(r'^(\d{1,2})(?::(\d{2}))?\s*(a|am|p|pm)?$', time_str.strip(), re.IGNORECASE)
     if not match:
-        return None, None
+        return None, None, None
     hour = int(match.group(1))
     minute = int(match.group(2)) if match.group(2) else 0
     suffix = match.group(3)
-
     if suffix:
         if suffix.lower().startswith('p') and hour != 12:
             hour += 12
         elif suffix.lower().startswith('a') and hour == 12:
             hour = 0
-
     return day_str, hour, minute
 
 # ------------ EVENTS ------------
@@ -131,7 +124,7 @@ async def schedule(ctx, *args):
         return
 
     if len(args) == 1:
-        parsed = parse_day_time(args[0], None)
+        parsed = parse_day_time(args[0])
     else:
         parsed = parse_day_time(args[0], args[1])
 
@@ -230,18 +223,17 @@ async def session_checker():
                             await bot.voice_clients[0].disconnect()
 
                         vc = await voice_channel.connect(reconnect=True, timeout=15.0)
+                        await asyncio.sleep(4)
 
-                        if vc.is_connected():
-                            print("[VOICE] Connection successfully established.")
-                        else:
-                            print("[VOICE] Still not connected after .connect() call.")
-                            return
+                        print(f"[DEBUG] vc.is_connected: {vc.is_connected()}")
+                        print(f"[DEBUG] vc.channel: {vc.channel if vc.is_connected() else 'N/A'}")
 
                         if os.path.exists(DEFAULT_TTS_FILE):
                             print("[AUDIO] Playing startup message...")
                             audio = discord.FFmpegPCMAudio(DEFAULT_TTS_FILE, stderr=subprocess.STDOUT)
                             try:
                                 vc.play(audio)
+                                print(f"[DEBUG] vc.is_playing: {vc.is_playing()}")
                                 while vc.is_playing():
                                     await asyncio.sleep(1)
                             except discord.ClientException as ce:
@@ -253,6 +245,7 @@ async def session_checker():
                             audio = discord.FFmpegPCMAudio("output.mp3", stderr=subprocess.STDOUT)
                             try:
                                 vc.play(audio)
+                                print(f"[DEBUG] vc.is_playing: {vc.is_playing()}")
                                 while vc.is_playing():
                                     await asyncio.sleep(1)
                             except discord.ClientException as ce:
