@@ -7,6 +7,7 @@ from gtts import gTTS
 import os
 import re
 import time
+import json
 
 print("[BOOT] Starting bot process...")
 
@@ -24,15 +25,34 @@ intents.members = True
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-# In-memory schedule: {day: [(hour, minute, voice_channel_id)]}
-schedule_data = {}
+# ------------ STORAGE ------------
+SCHEDULE_FILE = "schedule.json"
+def load_schedule():
+    if os.path.exists(SCHEDULE_FILE):
+        with open(SCHEDULE_FILE, "r") as f:
+            return json.load(f)
+    return {}
 
-# TTS engine
+def save_schedule():
+    with open(SCHEDULE_FILE, "w") as f:
+        json.dump(schedule_data, f)
+
+schedule_data = load_schedule()  # {guild_id: {day: [(hour, minute, vc_id)]}}
+session_triggered = set()
+
+# Pre-generated fallback TTS
+DEFAULT_TTS_FILE = "startup.mp3"
+def generate_default_audio():
+    if not os.path.exists(DEFAULT_TTS_FILE):
+        print("[TTS] Generating default startup audio...")
+        gTTS("Hi there, I'm still processing my first message, please wait.").save(DEFAULT_TTS_FILE)
+        time.sleep(1)
+
 def speak_text(text):
     print("[TTS] Generating audio...")
     tts = gTTS(text)
     tts.save("output.mp3")
-    time.sleep(1)  # Ensure file is ready
+    time.sleep(1)
     print("[TTS] Saved to output.mp3")
 
 # ------------ EVENTS ------------
@@ -48,7 +68,9 @@ async def on_ready():
                     "Commands:\n• `!schedule Mon 10:00`\n• `!show_schedule`\n• `!clear_schedule`\n• `!end`"
                 )
                 break
-    session_checker.start()
+    if not session_checker.is_running():
+        session_checker.start()
+    generate_default_audio()
 
 # ------------ COMMANDS ------------
 @bot.command()
@@ -89,16 +111,21 @@ async def schedule(ctx, day: str, time: str):
             await ctx.send("❌ Timed out waiting for channel name.")
             return
 
-    schedule_data.setdefault(day, []).append((hour, minute, voice_channel.id))
+    guild_id = str(ctx.guild.id)
+    if guild_id not in schedule_data:
+        schedule_data[guild_id] = {}
+    schedule_data[guild_id].setdefault(day, []).append((hour, minute, voice_channel.id))
+    save_schedule()
     await ctx.send(f"✅ Scheduled for {day} at {hour:02d}:{minute:02d} in {voice_channel.name}.")
 
 @bot.command()
 async def show_schedule(ctx):
-    if not schedule_data:
+    guild_id = str(ctx.guild.id)
+    if guild_id not in schedule_data or not schedule_data[guild_id]:
         await ctx.send("📜 No sessions scheduled.")
         return
     msg = "🗓️ Scheduled Sessions:\n"
-    for day, entries in schedule_data.items():
+    for day, entries in schedule_data[guild_id].items():
         for hour, minute, vc_id in entries:
             channel_name = discord.utils.get(ctx.guild.voice_channels, id=vc_id).name
             msg += f"• {day} {hour:02d}:{minute:02d} in {channel_name}\n"
@@ -106,7 +133,10 @@ async def show_schedule(ctx):
 
 @bot.command()
 async def clear_schedule(ctx):
-    schedule_data.clear()
+    guild_id = str(ctx.guild.id)
+    schedule_data[guild_id] = {}
+    save_schedule()
+    session_triggered.clear()
     await ctx.send("🪩 Cleared all scheduled sessions.")
 
 @bot.command()
@@ -118,23 +148,32 @@ async def end(ctx):
         await ctx.send("❌ I'm not in a voice channel.")
 
 # ------------ TASK LOOP ------------
-@tasks.loop(seconds=5)
+@tasks.loop(seconds=10)
 async def session_checker():
     now = datetime.datetime.now(TIMEZONE)
     current_day = now.strftime("%a")
+    current_time_key = f"{now.strftime('%a')}-{now.hour:02d}:{now.minute:02d}"
     print(f"[CHECKER] Now: {current_day} {now.strftime('%H:%M')} | Looking for sessions...")
 
-    if current_day not in schedule_data:
-        return
+    for guild in bot.guilds:
+        guild_id = str(guild.id)
+        if guild_id not in schedule_data:
+            continue
+        if (guild_id, current_time_key) in session_triggered:
+            continue
 
-    for hour, minute, vc_id in schedule_data[current_day]:
-        if now.hour == hour and now.minute == minute:
-            print(f"[CHECKER] Found match for {current_day} at {hour:02d}:{minute:02d} in VC ID {vc_id}")
-            for guild in bot.guilds:
+        for hour, minute, vc_id in schedule_data[guild_id].get(current_day, []):
+            if now.hour == hour and now.minute == minute:
+                session_triggered.add((guild_id, current_time_key))
+                print(f"[CHECKER] Found match for {current_day} at {hour:02d}:{minute:02d} in VC ID {vc_id}")
                 voice_channel = discord.utils.get(guild.voice_channels, id=vc_id)
                 if voice_channel:
                     try:
                         print(f"[VOICE] Attempting to join {voice_channel.name}")
+
+                        if bot.voice_clients:
+                            await bot.voice_clients[0].disconnect()
+
                         vc = await voice_channel.connect()
 
                         retries = 0
@@ -145,18 +184,22 @@ async def session_checker():
                                 print("[ERROR] Voice connection failed to stabilize.")
                                 return
 
-                        speak_text("Hi Evan, let’s get started. What’s your first priority today?")
-                        if os.path.exists("output.mp3"):
-                            print("[AUDIO] output.mp3 exists. Playing now...")
-                            audio = discord.FFmpegPCMAudio("output.mp3")
+                        if os.path.exists(DEFAULT_TTS_FILE):
+                            print("[AUDIO] Playing startup message...")
+                            audio = discord.FFmpegPCMAudio(DEFAULT_TTS_FILE)
                             vc.play(audio)
-
                             while vc.is_playing():
                                 await asyncio.sleep(1)
 
-                            print("[AUDIO] Playback completed. Staying in VC until !end.")
+                        speak_text("Hi Evan, let’s get started. What’s your first priority today?")
+                        if os.path.exists("output.mp3"):
+                            print("[AUDIO] Playing session message...")
+                            audio = discord.FFmpegPCMAudio("output.mp3")
+                            vc.play(audio)
+                            while vc.is_playing():
+                                await asyncio.sleep(1)
                         else:
-                            print("[ERROR] output.mp3 was not found after TTS generation.")
+                            print("[ERROR] output.mp3 not found.")
 
                         return
 
