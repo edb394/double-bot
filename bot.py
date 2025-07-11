@@ -40,6 +40,7 @@ def save_schedule():
 
 schedule_data = load_schedule()  # {guild_id: {day: [(hour, minute, vc_id)]}}
 session_triggered = set()
+user_requested_end = set()
 
 # Pre-generated fallback TTS
 DEFAULT_TTS_FILE = "startup.mp3"
@@ -61,7 +62,6 @@ def speak_text(text):
 async def on_ready():
     print(f"✅ Logged in as {bot.user.name}")
 
-    # Check ffmpeg presence
     try:
         subprocess.run(["ffmpeg", "-version"], check=True)
         print("[FFMPEG] ffmpeg is installed and available ✅")
@@ -150,6 +150,7 @@ async def clear_schedule(ctx):
 
 @bot.command()
 async def end(ctx):
+    user_requested_end.add(ctx.guild.id)
     if ctx.voice_client:
         await ctx.voice_client.disconnect()
         await ctx.send("👋 Session ended.")
@@ -157,7 +158,7 @@ async def end(ctx):
         await ctx.send("❌ I'm not in a voice channel.")
 
 # ------------ TASK LOOP ------------
-@tasks.loop(seconds=10)
+@tasks.loop(seconds=5)
 async def session_checker():
     now = datetime.datetime.now(TIMEZONE)
     current_day = now.strftime("%a")
@@ -210,6 +211,9 @@ async def session_checker():
                         else:
                             print("[ERROR] output.mp3 not found.")
 
+                        # Don't leave unless explicitly told to
+                        if int(guild_id) not in user_requested_end:
+                            print("[SESSION] Waiting for !end command to disconnect...")
                         return
 
                     except discord.ClientException as ce:
