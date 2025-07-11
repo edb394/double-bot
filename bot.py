@@ -8,6 +8,8 @@ import os
 import re
 import time
 
+print("[BOOT] Starting bot process...")
+
 # ------------ CONFIG ------------
 BOT_TOKEN = os.environ["BOT_TOKEN"]
 TIMEZONE = pytz.timezone("US/Central")
@@ -23,23 +25,15 @@ intents.members = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 # In-memory schedule: {day: [(hour, minute, voice_channel_id)]}
-session_schedule = {}
+schedule_data = {}
 
-# TTS engine with logging and error handling
+# TTS engine
 def speak_text(text):
-    try:
-        print("[TTS] Generating audio...")
-        start = time.time()
-        tts = gTTS(text)
-        tts.save("output.mp3")
-        duration = time.time() - start
-        print(f"[TTS] Audio saved as output.mp3 in {duration:.2f} seconds")
-    except Exception as e:
-        print(f"[ERROR] Failed to generate TTS audio: {e}")
-
-# Utility to normalize voice channel names
-def normalize(text):
-    return re.sub(r"\s+", " ", text.strip().lower())
+    print("[TTS] Generating audio...")
+    tts = gTTS(text)
+    tts.save("output.mp3")
+    time.sleep(1)  # Ensure file is ready
+    print("[TTS] Saved to output.mp3")
 
 # ------------ EVENTS ------------
 @bot.event
@@ -79,44 +73,40 @@ async def schedule(ctx, day: str, time: str):
         await ctx.send("You're not in a voice channel. Please type the name of the one I should join.")
 
         def check(m):
-            return m.author.id == ctx.author.id and m.channel.id == ctx.channel.id
+            return m.author == ctx.author and m.channel == ctx.channel
 
         try:
             reply = await bot.wait_for("message", timeout=30.0, check=check)
-            user_input = normalize(reply.content)
-            print(f"[DEBUG] User input normalized: '{user_input}'")
-            all_channels = [normalize(vc.name) for vc in ctx.guild.voice_channels]
-            print(f"[DEBUG] Server channels: {all_channels}")
-            voice_channel = next(
-                (vc for vc in ctx.guild.voice_channels if normalize(vc.name) == user_input),
-                None
-            )
-            if not voice_channel:
+            normalized_name = reply.content.strip().lower()
+            for vc in ctx.guild.voice_channels:
+                if vc.name.strip().lower() == normalized_name:
+                    voice_channel = vc
+                    break
+            else:
                 await ctx.send("❌ Could not find that voice channel.")
                 return
         except asyncio.TimeoutError:
             await ctx.send("❌ Timed out waiting for channel name.")
             return
 
-    session_schedule.setdefault(day, []).append((hour, minute, voice_channel.id))
+    schedule_data.setdefault(day, []).append((hour, minute, voice_channel.id))
     await ctx.send(f"✅ Scheduled for {day} at {hour:02d}:{minute:02d} in {voice_channel.name}.")
 
 @bot.command()
 async def show_schedule(ctx):
-    if not session_schedule:
-        await ctx.send("📬 No sessions scheduled.")
+    if not schedule_data:
+        await ctx.send("📭 No sessions scheduled.")
         return
     msg = "🗓️ Scheduled Sessions:\n"
-    for day, entries in session_schedule.items():
+    for day, entries in schedule_data.items():
         for hour, minute, vc_id in entries:
-            channel = discord.utils.get(ctx.guild.voice_channels, id=vc_id)
-            channel_name = channel.name if channel else "Unknown Channel"
+            channel_name = discord.utils.get(ctx.guild.voice_channels, id=vc_id).name
             msg += f"• {day} {hour:02d}:{minute:02d} in {channel_name}\n"
     await ctx.send(msg)
 
 @bot.command()
 async def clear_schedule(ctx):
-    session_schedule.clear()
+    schedule_data.clear()
     await ctx.send("🧹 Cleared all scheduled sessions.")
 
 @bot.command()
@@ -127,22 +117,17 @@ async def end(ctx):
     else:
         await ctx.send("❌ I'm not in a voice channel.")
 
-@bot.command()
-async def debug(ctx):
-    await ctx.send(f"🛠 Internal schedule state: `{session_schedule}`")
-
 # ------------ TASK LOOP ------------
 @tasks.loop(minutes=1)
 async def session_checker():
     now = datetime.datetime.now(TIMEZONE)
     current_day = now.strftime("%a")
-    print(f"[CHECKER] Now: {now.strftime('%a %H:%M')} | Looking for sessions...")
-    if current_day not in session_schedule:
+    print(f"[CHECKER] Now: {current_day} {now.strftime('%H:%M')} | Looking for sessions...")
+
+    if current_day not in schedule_data:
         return
 
-    new_schedule = []
-    for entry in session_schedule[current_day]:
-        hour, minute, vc_id = entry
+    for hour, minute, vc_id in schedule_data[current_day]:
         if now.hour == hour and now.minute == minute:
             print(f"[CHECKER] Found match for {current_day} at {hour:02d}:{minute:02d} in VC ID {vc_id}")
             for guild in bot.guilds:
@@ -152,19 +137,11 @@ async def session_checker():
                         print(f"[VOICE] Attempting to join {voice_channel.name}")
                         vc = await voice_channel.connect()
                         speak_text("Hi Evan, let’s get started. What’s your first priority today?")
-                        await asyncio.sleep(1)  # Ensure file system has completed write
                         if os.path.exists("output.mp3"):
                             vc.play(discord.FFmpegPCMAudio("output.mp3"))
-                        else:
-                            print("[ERROR] output.mp3 does not exist, skipping playback")
+                        break
                     except Exception as e:
                         print(f"[ERROR] Failed to join/play in {voice_channel.name}: {e}")
-        else:
-            new_schedule.append(entry)
-
-    if new_schedule:
-        session_schedule[current_day] = new_schedule
-    else:
-        del session_schedule[current_day]
+                        continue
 
 bot.run(BOT_TOKEN)
