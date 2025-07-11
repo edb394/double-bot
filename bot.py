@@ -7,6 +7,7 @@ from gtts import gTTS
 import os
 import re
 import time
+print("[BOOT] Starting bot process...")
 
 # ------------ CONFIG ------------
 BOT_TOKEN = os.environ["BOT_TOKEN"]
