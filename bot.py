@@ -57,6 +57,48 @@ def speak_text(text):
     time.sleep(1)
     print("[TTS] Saved to output.mp3")
 
+def parse_day_time(day_str, time_str):
+    now = datetime.datetime.now(TIMEZONE)
+    day_str = day_str.strip().capitalize()
+
+    # Handle input with only time (no day)
+    if not re.match(r'^(Mon|Tue|Wed|Thu|Fri|Sat|Sun)$', day_str):
+        time_str = day_str  # First argument was actually time
+        base_time = now.replace(second=0, microsecond=0)
+        match = re.match(r'^(\d{1,2})(?::(\d{2}))?\s*(a|am|p|pm)?$', time_str.strip(), re.IGNORECASE)
+        if not match:
+            return None, None
+        hour = int(match.group(1))
+        minute = int(match.group(2)) if match.group(2) else 0
+        suffix = match.group(3)
+
+        if suffix:
+            if suffix.lower().startswith('p') and hour != 12:
+                hour += 12
+            elif suffix.lower().startswith('a') and hour == 12:
+                hour = 0
+        else:
+            if now.hour >= 12 and hour < 12:
+                hour += 12
+
+        return now.strftime("%a"), hour, minute
+
+    # If both day and time are supplied
+    match = re.match(r'^(\d{1,2})(?::(\d{2}))?\s*(a|am|p|pm)?$', time_str.strip(), re.IGNORECASE)
+    if not match:
+        return None, None
+    hour = int(match.group(1))
+    minute = int(match.group(2)) if match.group(2) else 0
+    suffix = match.group(3)
+
+    if suffix:
+        if suffix.lower().startswith('p') and hour != 12:
+            hour += 12
+        elif suffix.lower().startswith('a') and hour == 12:
+            hour = 0
+
+    return day_str, hour, minute
+
 # ------------ EVENTS ------------
 @bot.event
 async def on_ready():
@@ -83,20 +125,23 @@ async def on_ready():
 
 # ------------ COMMANDS ------------
 @bot.command()
-async def schedule(ctx, day: str, time: str):
+async def schedule(ctx, *args):
+    if len(args) == 0:
+        await ctx.send("❌ You must provide at least a time or a day and time.")
+        return
+
+    if len(args) == 1:
+        parsed = parse_day_time(args[0], None)
+    else:
+        parsed = parse_day_time(args[0], args[1])
+
+    if parsed is None or parsed[1] is None:
+        await ctx.send("❌ Could not parse time. Examples: `8:00am`, `14:00`, `8am`, `Mon 10:00`")
+        return
+
+    day, hour, minute = parsed
     author = ctx.author
     voice_state = author.voice
-
-    try:
-        hour, minute = map(int, time.split(":"))
-    except ValueError:
-        await ctx.send("❌ Time format should be HH:MM, e.g., 14:30")
-        return
-
-    day = day.capitalize()
-    if day not in ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]:
-        await ctx.send("❌ Invalid day. Use Mon/Tue/Wed/etc.")
-        return
 
     if voice_state and voice_state.channel:
         voice_channel = voice_state.channel
@@ -184,34 +229,37 @@ async def session_checker():
                         if bot.voice_clients:
                             await bot.voice_clients[0].disconnect()
 
-                        vc = await voice_channel.connect()
+                        vc = await voice_channel.connect(reconnect=True, timeout=15.0)
 
-                        retries = 0
-                        while not vc.is_connected():
-                            await asyncio.sleep(0.5)
-                            retries += 1
-                            if retries > 10:
-                                print("[ERROR] Voice connection failed to stabilize.")
-                                return
+                        if vc.is_connected():
+                            print("[VOICE] Connection successfully established.")
+                        else:
+                            print("[VOICE] Still not connected after .connect() call.")
+                            return
 
                         if os.path.exists(DEFAULT_TTS_FILE):
                             print("[AUDIO] Playing startup message...")
                             audio = discord.FFmpegPCMAudio(DEFAULT_TTS_FILE, stderr=subprocess.STDOUT)
-                            vc.play(audio)
-                            while vc.is_playing():
-                                await asyncio.sleep(1)
+                            try:
+                                vc.play(audio)
+                                while vc.is_playing():
+                                    await asyncio.sleep(1)
+                            except discord.ClientException as ce:
+                                print(f"[ERROR] Failed to play startup audio: {ce}")
 
                         speak_text("Hi Evan, let’s get started. What’s your first priority today?")
                         if os.path.exists("output.mp3"):
                             print("[AUDIO] Playing session message...")
                             audio = discord.FFmpegPCMAudio("output.mp3", stderr=subprocess.STDOUT)
-                            vc.play(audio)
-                            while vc.is_playing():
-                                await asyncio.sleep(1)
+                            try:
+                                vc.play(audio)
+                                while vc.is_playing():
+                                    await asyncio.sleep(1)
+                            except discord.ClientException as ce:
+                                print(f"[ERROR] Failed to play session message: {ce}")
                         else:
                             print("[ERROR] output.mp3 not found.")
 
-                        # Don't leave unless explicitly told to
                         if int(guild_id) not in user_requested_end:
                             print("[SESSION] Waiting for !end command to disconnect...")
                         return
