@@ -95,7 +95,7 @@ async def schedule(ctx, day: str, time: str):
 @bot.command()
 async def show_schedule(ctx):
     if not schedule_data:
-        await ctx.send("📭 No sessions scheduled.")
+        await ctx.send("📜 No sessions scheduled.")
         return
     msg = "🗓️ Scheduled Sessions:\n"
     for day, entries in schedule_data.items():
@@ -107,7 +107,7 @@ async def show_schedule(ctx):
 @bot.command()
 async def clear_schedule(ctx):
     schedule_data.clear()
-    await ctx.send("🧹 Cleared all scheduled sessions.")
+    await ctx.send("🪩 Cleared all scheduled sessions.")
 
 @bot.command()
 async def end(ctx):
@@ -118,7 +118,7 @@ async def end(ctx):
         await ctx.send("❌ I'm not in a voice channel.")
 
 # ------------ TASK LOOP ------------
-@tasks.loop(seconds=10)
+@tasks.loop(seconds=5)
 async def session_checker():
     now = datetime.datetime.now(TIMEZONE)
     current_day = now.strftime("%a")
@@ -147,18 +147,18 @@ async def session_checker():
 
                         speak_text("Hi Evan, let’s get started. What’s your first priority today?")
                         if os.path.exists("output.mp3"):
+                            print("[AUDIO] output.mp3 exists. Playing now...")
                             audio = discord.FFmpegPCMAudio("output.mp3")
-                            print("[TTS] Playing audio in VC...")
                             vc.play(audio)
 
                             while vc.is_playing():
                                 await asyncio.sleep(1)
 
-                            print("[TTS] Playback completed. Waiting for !end to disconnect.")
+                            print("[AUDIO] Playback completed. Staying in VC until !end.")
                         else:
-                            print("[ERROR] output.mp3 was not found.")
+                            print("[ERROR] output.mp3 was not found after TTS generation.")
 
-                        return  # Exit the loop after one match
+                        return
 
                     except discord.ClientException as ce:
                         print(f"[ERROR] Discord client exception: {ce}")
