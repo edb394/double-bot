@@ -50,10 +50,18 @@ def generate_default_audio():
         gTTS("Hi there, I'm still processing my first message, please wait.").save(DEFAULT_TTS_FILE)
         time.sleep(1)
 
+def reencode_audio(filename):
+    subprocess.run([
+        "ffmpeg", "-y", "-i", filename,
+        "-ar", "48000", "-ac", "2", "-f", "mp3", f"re_{filename}"
+    ])
+    os.replace(f"re_{filename}", filename)
+
 def speak_text(text):
     print("[TTS] Generating audio...")
     tts = gTTS(text)
     tts.save("output.mp3")
+    reencode_audio("output.mp3")
     time.sleep(1)
     print("[TTS] Saved to output.mp3")
 
@@ -223,15 +231,23 @@ async def session_checker():
                             await bot.voice_clients[0].disconnect()
 
                         vc = await voice_channel.connect(reconnect=True, timeout=15.0)
-                        await asyncio.sleep(4)
 
-                        print(f"[DEBUG] vc.is_connected: {vc.is_connected()}")
-                        print(f"[DEBUG] vc.channel: {vc.channel if vc.is_connected() else 'N/A'}")
+                        for i in range(20):
+                            if vc.is_connected() and vc.channel is not None:
+                                break
+                            print(f"[DEBUG] Waiting for voice connection to stabilize... {i}")
+                            await asyncio.sleep(0.5)
+                        else:
+                            print("[ERROR] Voice connection never stabilized after connect().")
+                            await vc.disconnect()
+                            return
 
                         if os.path.exists(DEFAULT_TTS_FILE):
                             print("[AUDIO] Playing startup message...")
                             audio = discord.FFmpegPCMAudio(DEFAULT_TTS_FILE, stderr=subprocess.STDOUT)
                             try:
+                                while vc.is_playing():
+                                    await asyncio.sleep(1)
                                 vc.play(audio)
                                 print(f"[DEBUG] vc.is_playing: {vc.is_playing()}")
                                 while vc.is_playing():
@@ -244,6 +260,8 @@ async def session_checker():
                             print("[AUDIO] Playing session message...")
                             audio = discord.FFmpegPCMAudio("output.mp3", stderr=subprocess.STDOUT)
                             try:
+                                while vc.is_playing():
+                                    await asyncio.sleep(1)
                                 vc.play(audio)
                                 print(f"[DEBUG] vc.is_playing: {vc.is_playing()}")
                                 while vc.is_playing():
