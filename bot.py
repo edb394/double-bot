@@ -148,7 +148,13 @@ async def session_checker():
                         speak_text("Hi Evan, let’s get started. What’s your first priority today?")
                         if os.path.exists("output.mp3"):
                             audio = discord.FFmpegPCMAudio("output.mp3")
+                            print("[TTS] Playing audio in VC...")
                             vc.play(audio)
+
+                            while vc.is_playing():
+                                await asyncio.sleep(1)
+
+                            print("[TTS] Playback completed. Waiting for !end to disconnect.")
                         else:
                             print("[ERROR] output.mp3 was not found.")
                         break
