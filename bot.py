@@ -8,6 +8,7 @@ import os
 import re
 import time
 import json
+import subprocess
 
 print("[BOOT] Starting bot process...")
 
@@ -59,6 +60,14 @@ def speak_text(text):
 @bot.event
 async def on_ready():
     print(f"✅ Logged in as {bot.user.name}")
+
+    # Check ffmpeg presence
+    try:
+        subprocess.run(["ffmpeg", "-version"], check=True)
+        print("[FFMPEG] ffmpeg is installed and available ✅")
+    except Exception as e:
+        print(f"[FFMPEG] ERROR: {e}")
+
     for guild in bot.guilds:
         for channel in guild.text_channels:
             if channel.permissions_for(guild.me).send_messages:
@@ -186,7 +195,7 @@ async def session_checker():
 
                         if os.path.exists(DEFAULT_TTS_FILE):
                             print("[AUDIO] Playing startup message...")
-                            audio = discord.FFmpegPCMAudio(DEFAULT_TTS_FILE)
+                            audio = discord.FFmpegPCMAudio(DEFAULT_TTS_FILE, stderr=subprocess.STDOUT)
                             vc.play(audio)
                             while vc.is_playing():
                                 await asyncio.sleep(1)
@@ -194,7 +203,7 @@ async def session_checker():
                         speak_text("Hi Evan, let’s get started. What’s your first priority today?")
                         if os.path.exists("output.mp3"):
                             print("[AUDIO] Playing session message...")
-                            audio = discord.FFmpegPCMAudio("output.mp3")
+                            audio = discord.FFmpegPCMAudio("output.mp3", stderr=subprocess.STDOUT)
                             vc.play(audio)
                             while vc.is_playing():
                                 await asyncio.sleep(1)
