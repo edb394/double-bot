@@ -118,7 +118,7 @@ async def end(ctx):
         await ctx.send("❌ I'm not in a voice channel.")
 
 # ------------ TASK LOOP ------------
-@tasks.loop(minutes=1)
+@tasks.loop(seconds=10)
 async def session_checker():
     now = datetime.datetime.now(TIMEZONE)
     current_day = now.strftime("%a")
@@ -157,7 +157,14 @@ async def session_checker():
                             print("[TTS] Playback completed. Waiting for !end to disconnect.")
                         else:
                             print("[ERROR] output.mp3 was not found.")
-                        break
+
+                        return  # Exit the loop after one match
+
+                    except discord.ClientException as ce:
+                        print(f"[ERROR] Discord client exception: {ce}")
+                        if bot.voice_clients:
+                            await bot.voice_clients[0].disconnect()
+                        return
                     except Exception as e:
                         print(f"[ERROR] Failed to join/play in {voice_channel.name}: {e}")
                         continue
