@@ -136,9 +136,21 @@ async def session_checker():
                     try:
                         print(f"[VOICE] Attempting to join {voice_channel.name}")
                         vc = await voice_channel.connect()
+
+                        retries = 0
+                        while not vc.is_connected():
+                            await asyncio.sleep(0.5)
+                            retries += 1
+                            if retries > 10:
+                                print("[ERROR] Voice connection failed to stabilize.")
+                                return
+
                         speak_text("Hi Evan, let’s get started. What’s your first priority today?")
                         if os.path.exists("output.mp3"):
-                            vc.play(discord.FFmpegPCMAudio("output.mp3"))
+                            audio = discord.FFmpegPCMAudio("output.mp3")
+                            vc.play(audio)
+                        else:
+                            print("[ERROR] output.mp3 was not found.")
                         break
                     except Exception as e:
                         print(f"[ERROR] Failed to join/play in {voice_channel.name}: {e}")
