@@ -7,7 +7,6 @@ from gtts import gTTS
 import os
 import re
 import time
-print("[BOOT] Starting bot process...")
 
 # ------------ CONFIG ------------
 BOT_TOKEN = os.environ["BOT_TOKEN"]
@@ -153,12 +152,11 @@ async def session_checker():
                         print(f"[VOICE] Attempting to join {voice_channel.name}")
                         vc = await voice_channel.connect()
                         speak_text("Hi Evan, let’s get started. What’s your first priority today?")
+                        await asyncio.sleep(1)  # Ensure file system has completed write
                         if os.path.exists("output.mp3"):
                             vc.play(discord.FFmpegPCMAudio("output.mp3"))
                         else:
                             print("[ERROR] output.mp3 does not exist, skipping playback")
-                        await asyncio.sleep(30)
-                        await vc.disconnect()
                     except Exception as e:
                         print(f"[ERROR] Failed to join/play in {voice_channel.name}: {e}")
         else:
